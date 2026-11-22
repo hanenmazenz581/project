@@ -1,0 +1,56 @@
+name: Build StudioCut Pro for Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout build manifest
+        uses: actions/checkout@v4
+
+      - name: Extract source package
+        shell: pwsh
+        run: |
+          $bytes = [Convert]::FromBase64String((Get-Content -Raw 'studiocut-source.zip.b64'))
+          [IO.File]::WriteAllBytes('studiocut-source.zip', $bytes)
+          Expand-Archive -Path 'studiocut-source.zip' -DestinationPath 'source' -Force
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: 'x64'
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build application and installer
+        shell: cmd
+        working-directory: source
+        env:
+          CI: 'true'
+        run: build_windows.bat
+
+      - name: Verify installer exists
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem 'source\release' -Filter 'StudioCutPro-Setup-*.exe' -File | Select-Object -First 1
+          if (-not $installer) { throw 'Installer EXE was not produced.' }
+          Get-Item $installer.FullName | Format-List FullName,Length
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: StudioCutPro-Windows-Installer
+          path: source/release/StudioCutPro-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 14
