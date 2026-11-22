@@ -116,10 +116,12 @@ private:
     QPushButton *playButton{};
     QVector<Clip> clips;
     QVector<Clip> audioClips;
-    QListWidget *audioTimeline{};
+    QVector<Clip> overlayClips;
+    QListWidget *audioTimeline{}, *overlayTimeline{};
     QString projectPath;
     bool seeking = false;
     bool inspectorAudio = false;
+    bool inspectorOverlay = false;
 
     static QString timecode(qint64 seconds) {
         seconds = qMax<qint64>(0, seconds);
@@ -146,8 +148,8 @@ private:
         auto *toolbar = new QHBoxLayout;
         auto *brand = new QLabel("STUDIOCUT  /  PRO"); brand->setObjectName("brand"); toolbar->addWidget(brand);
         toolbar->addStretch();
-        auto *importBtn=action("＋ Import Media"); auto *addBtn=action("Add Video"); auto *addAudioBtn=action("Add Audio"); auto *splitBtn=action("Split"); auto *exportBtn=action("Export");
-        toolbar->addWidget(importBtn); toolbar->addWidget(addBtn); toolbar->addWidget(addAudioBtn); toolbar->addWidget(splitBtn); toolbar->addWidget(exportBtn);
+        auto *importBtn=action("＋ Import Media"); auto *addBtn=action("Add Video"); auto *addOverlayBtn=action("Add Overlay"); auto *addAudioBtn=action("Add Audio"); auto *splitBtn=action("Split"); auto *exportBtn=action("Export");
+        toolbar->addWidget(importBtn); toolbar->addWidget(addBtn); toolbar->addWidget(addOverlayBtn); toolbar->addWidget(addAudioBtn); toolbar->addWidget(splitBtn); toolbar->addWidget(exportBtn);
         outer->addLayout(toolbar);
 
         auto *upper = new QSplitter(Qt::Horizontal);
@@ -172,6 +174,7 @@ private:
         auto *tlHead = new QHBoxLayout; auto *tlTitle=new QLabel("TIMELINE"); tlTitle->setObjectName("panelTitle"); tlHead->addWidget(tlTitle); tlHead->addStretch();
         auto *up=action("Move Up"); auto *down=action("Move Down"); auto *remove=action("Remove Clip"); tlHead->addWidget(up); tlHead->addWidget(down); tlHead->addWidget(remove); tl->addLayout(tlHead);
         timeline = new QListWidget; timeline->setSelectionMode(QAbstractItemView::SingleSelection); timeline->setMinimumHeight(105); tl->addWidget(new QLabel("VIDEO TRACK 1")); tl->addWidget(timeline);
+        overlayTimeline = new QListWidget; overlayTimeline->setSelectionMode(QAbstractItemView::SingleSelection); overlayTimeline->setMinimumHeight(72); tl->addWidget(new QLabel("VIDEO TRACK 2 — OVERLAY")); tl->addWidget(overlayTimeline);
         audioTimeline = new QListWidget; audioTimeline->setSelectionMode(QAbstractItemView::SingleSelection); audioTimeline->setMinimumHeight(72); tl->addWidget(new QLabel("AUDIO TRACK 1")); tl->addWidget(audioTimeline);
         auto *seekRow = new QHBoxLayout; playhead = new QSlider(Qt::Horizontal); playhead->setRange(0,1); seekRow->addWidget(new QLabel("PLAYHEAD")); seekRow->addWidget(playhead,1); tl->addLayout(seekRow);
         outer->addWidget(timelineArea,2);
@@ -179,6 +182,7 @@ private:
 
         connect(importBtn,&QPushButton::clicked,this,&StudioCutWindow::importMedia);
         connect(addBtn,&QPushButton::clicked,this,&StudioCutWindow::addSelectedToTimeline);
+        connect(addOverlayBtn,&QPushButton::clicked,this,&StudioCutWindow::addSelectedToOverlayTrack);
         connect(addAudioBtn,&QPushButton::clicked,this,&StudioCutWindow::addSelectedToAudioTrack);
         connect(splitBtn,&QPushButton::clicked,this,&StudioCutWindow::splitAtPlayhead);
         connect(exportBtn,&QPushButton::clicked,this,&StudioCutWindow::exportVideo);
@@ -189,6 +193,8 @@ private:
         connect(timeline,&QListWidget::currentRowChanged,this,&StudioCutWindow::showInspector);
         connect(audioTimeline,&QListWidget::itemDoubleClicked,this,[this](QListWidgetItem *it){int i=audioTimeline->row(it);if(i>=0&&i<audioClips.size())player->setSource(QUrl::fromLocalFile(audioClips[i].path));});
         connect(audioTimeline,&QListWidget::currentRowChanged,this,&StudioCutWindow::showAudioInspector);
+        connect(overlayTimeline,&QListWidget::itemDoubleClicked,this,[this](QListWidgetItem *it){int i=overlayTimeline->row(it);if(i>=0&&i<overlayClips.size())player->setSource(QUrl::fromLocalFile(overlayClips[i].path));});
+        connect(overlayTimeline,&QListWidget::currentRowChanged,this,&StudioCutWindow::showOverlayInspector);
         connect(applyTrim,&QPushButton::clicked,this,&StudioCutWindow::applyTrim);
         connect(remove,&QPushButton::clicked,this,&StudioCutWindow::removeClip);
         connect(up,&QPushButton::clicked,this,[this]{moveClip(-1);}); connect(down,&QPushButton::clicked,this,[this]{moveClip(1);});
@@ -227,6 +233,14 @@ private:
             Clip c; c.path=path; c.inPoint=0; c.outPoint=-1; clips.push_back(c);++added;}
         refreshTimeline(); statusBar()->showMessage(QString("Added %1 clip(s) to Video Track 1").arg(added));
     }
+    void addSelectedToOverlayTrack() {
+        auto selected=mediaBin->selectedItems(); if(selected.isEmpty()){QMessageBox::information(this,"StudioCut Pro","Select video or image files for Video Track 2.");return;}
+        int added=0;
+        for(auto *it:selected){QString path=it->data(Qt::UserRole).toString();QString ext=QFileInfo(path).suffix().toLower();
+            if(QStringList{"mp3","wav","aac","m4a","flac","ogg"}.contains(ext))continue;
+            Clip c; c.path=path; c.inPoint=0; c.outPoint=-1; overlayClips.push_back(c);++added;}
+        refreshTimeline(); statusBar()->showMessage(QString("Added %1 clip(s) to Video Track 2").arg(added));
+    }
     void addSelectedToAudioTrack() {
         auto selected=mediaBin->selectedItems(); if(selected.isEmpty()){QMessageBox::information(this,"StudioCut Pro","Select audio files in the Media Library first.");return;}
         int added=0;
@@ -238,26 +252,40 @@ private:
     void refreshTimeline() {
         timeline->clear();
         for(int i=0;i<clips.size();++i){const auto &c=clips[i];QString end=c.outPoint<0?"Source end":timecode(qint64(c.outPoint));auto *it=new QListWidgetItem(QString("%1   |   IN %2   OUT %3").arg(QFileInfo(c.path).fileName(),timecode(qint64(c.inPoint)),end));it->setToolTip(c.path);timeline->addItem(it);}
+        overlayTimeline->clear();
+        for(int i=0;i<overlayClips.size();++i){const auto &c=overlayClips[i];QString end=c.outPoint<0?"Source end":timecode(qint64(c.outPoint));auto *it=new QListWidgetItem(QString("▧  %1   |   IN %2   OUT %3").arg(QFileInfo(c.path).fileName(),timecode(qint64(c.inPoint)),end));it->setToolTip(c.path);overlayTimeline->addItem(it);}
         audioTimeline->clear();
         for(int i=0;i<audioClips.size();++i){const auto &c=audioClips[i];QString end=c.outPoint<0?"Source end":timecode(qint64(c.outPoint));auto *it=new QListWidgetItem(QString("♫  %1   |   IN %2   OUT %3").arg(QFileInfo(c.path).fileName(),timecode(qint64(c.inPoint)),end));it->setToolTip(c.path);audioTimeline->addItem(it);}
     }
     void showInspector(int row) {
-        inspectorAudio=false;
+        inspectorAudio=false;inspectorOverlay=false;
         if(row<0||row>=clips.size()){inspectorName->setText("No clip selected");inspectorPath->setText("Select a video clip to inspect.");return;}
         const auto &c=clips[row];inspectorName->setText(QFileInfo(c.path).fileName());inspectorPath->setText("Video Track 1  •  "+c.path);inSpin->setValue(c.inPoint);outSpin->setValue(c.outPoint<0?0:c.outPoint);
     }
     void showAudioInspector(int row) {
-        inspectorAudio=true;
+        inspectorAudio=true;inspectorOverlay=false;
         if(row<0||row>=audioClips.size()){inspectorName->setText("No audio clip selected");inspectorPath->setText("Select an audio clip to inspect.");return;}
         const auto &c=audioClips[row];inspectorName->setText(QFileInfo(c.path).fileName());inspectorPath->setText("Audio Track 1  •  "+c.path);inSpin->setValue(c.inPoint);outSpin->setValue(c.outPoint<0?0:c.outPoint);
     }
+    void showOverlayInspector(int row) {
+        inspectorAudio=false;inspectorOverlay=true;
+        if(row<0||row>=overlayClips.size()){inspectorName->setText("No overlay selected");inspectorPath->setText("Select a clip on Video Track 2.");return;}
+        const auto &c=overlayClips[row];inspectorName->setText(QFileInfo(c.path).fileName());inspectorPath->setText("Video Track 2 — Overlay  •  "+c.path);inSpin->setValue(c.inPoint);outSpin->setValue(c.outPoint<0?0:c.outPoint);
+    }
     void applyTrim() {
         double a=inSpin->value(),b=outSpin->value(); if(b<=a){QMessageBox::warning(this,"Invalid trim","Out point must be greater than In point.");return;}
-        if(inspectorAudio){int row=audioTimeline->currentRow();if(row<0||row>=audioClips.size())return;audioClips[row].inPoint=a;audioClips[row].outPoint=b;refreshTimeline();audioTimeline->setCurrentRow(row);}
+        if(inspectorOverlay){int row=overlayTimeline->currentRow();if(row<0||row>=overlayClips.size())return;overlayClips[row].inPoint=a;overlayClips[row].outPoint=b;refreshTimeline();overlayTimeline->setCurrentRow(row);}
+        else if(inspectorAudio){int row=audioTimeline->currentRow();if(row<0||row>=audioClips.size())return;audioClips[row].inPoint=a;audioClips[row].outPoint=b;refreshTimeline();audioTimeline->setCurrentRow(row);}
         else {int row=timeline->currentRow();if(row<0||row>=clips.size())return;clips[row].inPoint=a;clips[row].outPoint=b;refreshTimeline();timeline->setCurrentRow(row);}
     }
     void splitAtPlayhead() {
         const double cut=player->position()/1000.0;
+        if(inspectorOverlay){
+            int row=overlayTimeline->currentRow();if(row<0||row>=overlayClips.size()){QMessageBox::information(this,"Split","Select an overlay clip first.");return;}
+            Clip original=overlayClips[row];double end=original.outPoint<0?player->duration()/1000.0:original.outPoint;
+            if(cut<=original.inPoint||cut>=end){QMessageBox::warning(this,"Split","Move the playhead inside the selected overlay clip's source range.");return;}
+            Clip left=original,right=original;left.outPoint=cut;right.inPoint=cut;overlayClips[row]=left;overlayClips.insert(row+1,right);refreshTimeline();overlayTimeline->setCurrentRow(row+1);return;
+        }
         if(inspectorAudio){
             int row=audioTimeline->currentRow();if(row<0||row>=audioClips.size()){QMessageBox::information(this,"Split","Select an audio clip first.");return;}
             Clip original=audioClips[row];double end=original.outPoint<0?player->duration()/1000.0:original.outPoint;
@@ -269,14 +297,15 @@ private:
         if(cut<=original.inPoint||cut>=end){QMessageBox::warning(this,"Split","Move the playhead inside the selected video clip's source range.");return;}
         Clip left=original,right=original;left.outPoint=cut;right.inPoint=cut;clips[row]=left;clips.insert(row+1,right);refreshTimeline();timeline->setCurrentRow(row+1);
     }
-    void removeClip(){if(inspectorAudio){int row=audioTimeline->currentRow();if(row<0||row>=audioClips.size())return;audioClips.removeAt(row);refreshTimeline();}else{int row=timeline->currentRow();if(row<0||row>=clips.size())return;clips.removeAt(row);refreshTimeline();}}
-    void moveClip(int delta){if(inspectorAudio){int row=audioTimeline->currentRow(),to=row+delta;if(row<0||to<0||to>=audioClips.size())return;audioClips.swapItemsAt(row,to);refreshTimeline();audioTimeline->setCurrentRow(to);}else{int row=timeline->currentRow(),to=row+delta;if(row<0||to<0||to>=clips.size())return;clips.swapItemsAt(row,to);refreshTimeline();timeline->setCurrentRow(to);}}
+    void removeClip(){if(inspectorOverlay){int row=overlayTimeline->currentRow();if(row<0||row>=overlayClips.size())return;overlayClips.removeAt(row);refreshTimeline();}else if(inspectorAudio){int row=audioTimeline->currentRow();if(row<0||row>=audioClips.size())return;audioClips.removeAt(row);refreshTimeline();}else{int row=timeline->currentRow();if(row<0||row>=clips.size())return;clips.removeAt(row);refreshTimeline();}}
+    void moveClip(int delta){if(inspectorOverlay){int row=overlayTimeline->currentRow(),to=row+delta;if(row<0||to<0||to>=overlayClips.size())return;overlayClips.swapItemsAt(row,to);refreshTimeline();overlayTimeline->setCurrentRow(to);}else if(inspectorAudio){int row=audioTimeline->currentRow(),to=row+delta;if(row<0||to<0||to>=audioClips.size())return;audioClips.swapItemsAt(row,to);refreshTimeline();audioTimeline->setCurrentRow(to);}else{int row=timeline->currentRow(),to=row+delta;if(row<0||to<0||to>=clips.size())return;clips.swapItemsAt(row,to);refreshTimeline();timeline->setCurrentRow(to);}}
     void saveProject() {
         if(projectPath.isEmpty())projectPath=QFileDialog::getSaveFileName(this,"Save StudioCut Project",QDir::homePath()+"/Untitled.studiocut","StudioCut Project (*.studiocut)");
         if(projectPath.isEmpty())return;
         QJsonArray arr;for(const auto &c:clips){QJsonObject o;o["path"]=c.path;o["in"]=c.inPoint;o["out"]=c.outPoint;arr.append(o);}
         QJsonArray audioArr;for(const auto &c:audioClips){QJsonObject o;o["path"]=c.path;o["in"]=c.inPoint;o["out"]=c.outPoint;audioArr.append(o);}
-        QJsonObject root;root["format"]="StudioCutProject";root["version"]=2;root["clips"]=arr;root["audioClips"]=audioArr;
+        QJsonArray overlayArr;for(const auto &c:overlayClips){QJsonObject o;o["path"]=c.path;o["in"]=c.inPoint;o["out"]=c.outPoint;overlayArr.append(o);}
+        QJsonObject root;root["format"]="StudioCutProject";root["version"]=3;root["clips"]=arr;root["audioClips"]=audioArr;root["overlayClips"]=overlayArr;
         QFile f(projectPath);if(!f.open(QIODevice::WriteOnly)){QMessageBox::critical(this,"Save failed",f.errorString());return;}
         f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));f.close();statusBar()->showMessage("Project saved: "+projectPath);
     }
@@ -284,8 +313,9 @@ private:
         QString p=QFileDialog::getOpenFileName(this,"Open StudioCut Project",QDir::homePath(),"StudioCut Project (*.studiocut)");
         if(p.isEmpty())return;QFile f(p);if(!f.open(QIODevice::ReadOnly)){QMessageBox::critical(this,"Open failed",f.errorString());return;}
         auto doc=QJsonDocument::fromJson(f.readAll());if(!doc.isObject()||doc.object()["format"].toString()!="StudioCutProject"){QMessageBox::warning(this,"Invalid project","This file is not a valid StudioCut project.");return;}
-        clips.clear();audioClips.clear();auto arr=doc.object()["clips"].toArray();for(const auto &v:arr){auto o=v.toObject();Clip c;c.path=o["path"].toString();c.inPoint=o["in"].toDouble();c.outPoint=o["out"].toDouble(-1);clips.push_back(c);}
+        clips.clear();audioClips.clear();overlayClips.clear();auto arr=doc.object()["clips"].toArray();for(const auto &v:arr){auto o=v.toObject();Clip c;c.path=o["path"].toString();c.inPoint=o["in"].toDouble();c.outPoint=o["out"].toDouble(-1);clips.push_back(c);}
         auto audioArr=doc.object()["audioClips"].toArray();for(const auto &v:audioArr){auto o=v.toObject();Clip c;c.path=o["path"].toString();c.inPoint=o["in"].toDouble();c.outPoint=o["out"].toDouble(-1);audioClips.push_back(c);}
+        auto overlayArr=doc.object()["overlayClips"].toArray();for(const auto &v:overlayArr){auto o=v.toObject();Clip c;c.path=o["path"].toString();c.inPoint=o["in"].toDouble();c.outPoint=o["out"].toDouble(-1);overlayClips.push_back(c);}
         projectPath=p;refreshTimeline();statusBar()->showMessage("Project opened: "+p);
     }
     void exportVideo() {
