@@ -229,12 +229,31 @@ private:
             if(!exists){auto *it=new QListWidgetItem(QFileInfo(p).fileName());it->setToolTip(p);it->setData(Qt::UserRole,p);mediaBin->addItem(it);} }
         statusBar()->showMessage(QString("%1 media item(s) in library").arg(mediaBin->count()));
     }
+    double mediaDurationSeconds(const QString &path) const {
+        const QString ext=QFileInfo(path).suffix().toLower();
+        if(QStringList{"png","jpg","jpeg","bmp","webp"}.contains(ext))return 5.0;
+#ifdef STUDIOCUT_FFPROBE_PATH
+        QString probe=QString::fromUtf8(STUDIOCUT_FFPROBE_PATH);
+#else
+        QString probe=QDir(QCoreApplication::applicationDirPath()).filePath("ffprobe.exe");
+        if(!QFileInfo::exists(probe))probe="ffprobe";
+#endif
+        QProcess p;p.setProgram(probe);p.setArguments({"-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1",path});
+        p.start();if(!p.waitForStarted(1500)||!p.waitForFinished(6000))return 0.0;
+        bool ok=false;double value=QString::fromLocal8Bit(p.readAllStandardOutput()).trimmed().toDouble(&ok);
+        return ok&&value>0?value:0.0;
+    }
+    double trackEnd(const QVector<Clip> &track) const {
+        double end=0.0;
+        for(const auto &c:track){double d=c.outPoint>c.inPoint?c.outPoint-c.inPoint:qMax(0.0,mediaDurationSeconds(c.path)-c.inPoint);end=qMax(end,c.timelineStart+d);}
+        return end;
+    }
     void addSelectedToTimeline() {
         auto selected=mediaBin->selectedItems(); if(selected.isEmpty()){QMessageBox::information(this,"StudioCut Pro","Select one or more video or image files in the Media Library first.");return;}
         int added=0;
         for(auto *it:selected){QString path=it->data(Qt::UserRole).toString();QString ext=QFileInfo(path).suffix().toLower();
             if(QStringList{"mp3","wav","aac","m4a","flac","ogg"}.contains(ext))continue;
-            Clip c; c.path=path; c.inPoint=0; c.outPoint=-1; clips.push_back(c);++added;}
+            Clip c; c.path=path; c.inPoint=0; c.outPoint=-1; c.timelineStart=trackEnd(clips); clips.push_back(c);++added;}
         refreshTimeline(); statusBar()->showMessage(QString("Added %1 clip(s) to Video Track 1").arg(added));
     }
     void addSelectedToOverlayTrack() {
@@ -242,7 +261,7 @@ private:
         int added=0;
         for(auto *it:selected){QString path=it->data(Qt::UserRole).toString();QString ext=QFileInfo(path).suffix().toLower();
             if(QStringList{"mp3","wav","aac","m4a","flac","ogg"}.contains(ext))continue;
-            Clip c; c.path=path; c.inPoint=0; c.outPoint=-1; overlayClips.push_back(c);++added;}
+            Clip c; c.path=path; c.inPoint=0; c.outPoint=-1; c.timelineStart=trackEnd(overlayClips); overlayClips.push_back(c);++added;}
         refreshTimeline(); statusBar()->showMessage(QString("Added %1 clip(s) to Video Track 2").arg(added));
     }
     void addSelectedToAudioTrack() {
@@ -250,7 +269,7 @@ private:
         int added=0;
         for(auto *it:selected){QString path=it->data(Qt::UserRole).toString();QString ext=QFileInfo(path).suffix().toLower();
             if(!QStringList{"mp3","wav","aac","m4a","flac","ogg"}.contains(ext))continue;
-            Clip c; c.path=path; c.inPoint=0; c.outPoint=-1; audioClips.push_back(c);++added;}
+            Clip c; c.path=path; c.inPoint=0; c.outPoint=-1; c.timelineStart=trackEnd(audioClips); audioClips.push_back(c);++added;}
         refreshTimeline(); statusBar()->showMessage(QString("Added %1 clip(s) to Audio Track 1").arg(added));
     }
     void refreshTimeline() {
@@ -288,18 +307,18 @@ private:
             int row=overlayTimeline->currentRow();if(row<0||row>=overlayClips.size()){QMessageBox::information(this,"Split","Select an overlay clip first.");return;}
             Clip original=overlayClips[row];double end=original.outPoint<0?player->duration()/1000.0:original.outPoint;
             if(cut<=original.inPoint||cut>=end){QMessageBox::warning(this,"Split","Move the playhead inside the selected overlay clip's source range.");return;}
-            Clip left=original,right=original;left.outPoint=cut;right.inPoint=cut;overlayClips[row]=left;overlayClips.insert(row+1,right);refreshTimeline();overlayTimeline->setCurrentRow(row+1);return;
+            Clip left=original,right=original;left.outPoint=cut;right.inPoint=cut;right.timelineStart=original.timelineStart+(cut-original.inPoint);overlayClips[row]=left;overlayClips.insert(row+1,right);refreshTimeline();overlayTimeline->setCurrentRow(row+1);return;
         }
         if(inspectorAudio){
             int row=audioTimeline->currentRow();if(row<0||row>=audioClips.size()){QMessageBox::information(this,"Split","Select an audio clip first.");return;}
             Clip original=audioClips[row];double end=original.outPoint<0?player->duration()/1000.0:original.outPoint;
             if(cut<=original.inPoint||cut>=end){QMessageBox::warning(this,"Split","Move the playhead inside the selected audio clip's source range.");return;}
-            Clip left=original,right=original;left.outPoint=cut;right.inPoint=cut;audioClips[row]=left;audioClips.insert(row+1,right);refreshTimeline();audioTimeline->setCurrentRow(row+1);return;
+            Clip left=original,right=original;left.outPoint=cut;right.inPoint=cut;right.timelineStart=original.timelineStart+(cut-original.inPoint);audioClips[row]=left;audioClips.insert(row+1,right);refreshTimeline();audioTimeline->setCurrentRow(row+1);return;
         }
         int row=timeline->currentRow();if(row<0||row>=clips.size()){QMessageBox::information(this,"Split","Select a video clip first.");return;}
         Clip original=clips[row];double end=original.outPoint<0?player->duration()/1000.0:original.outPoint;
         if(cut<=original.inPoint||cut>=end){QMessageBox::warning(this,"Split","Move the playhead inside the selected video clip's source range.");return;}
-        Clip left=original,right=original;left.outPoint=cut;right.inPoint=cut;clips[row]=left;clips.insert(row+1,right);refreshTimeline();timeline->setCurrentRow(row+1);
+        Clip left=original,right=original;left.outPoint=cut;right.inPoint=cut;right.timelineStart=original.timelineStart+(cut-original.inPoint);clips[row]=left;clips.insert(row+1,right);refreshTimeline();timeline->setCurrentRow(row+1);
     }
     void removeClip(){if(inspectorOverlay){int row=overlayTimeline->currentRow();if(row<0||row>=overlayClips.size())return;overlayClips.removeAt(row);refreshTimeline();}else if(inspectorAudio){int row=audioTimeline->currentRow();if(row<0||row>=audioClips.size())return;audioClips.removeAt(row);refreshTimeline();}else{int row=timeline->currentRow();if(row<0||row>=clips.size())return;clips.removeAt(row);refreshTimeline();}}
     void moveClip(int delta){if(inspectorOverlay){int row=overlayTimeline->currentRow(),to=row+delta;if(row<0||to<0||to>=overlayClips.size())return;overlayClips.swapItemsAt(row,to);refreshTimeline();overlayTimeline->setCurrentRow(to);}else if(inspectorAudio){int row=audioTimeline->currentRow(),to=row+delta;if(row<0||to<0||to>=audioClips.size())return;audioClips.swapItemsAt(row,to);refreshTimeline();audioTimeline->setCurrentRow(to);}else{int row=timeline->currentRow(),to=row+delta;if(row<0||to<0||to>=clips.size())return;clips.swapItemsAt(row,to);refreshTimeline();timeline->setCurrentRow(to);}}
