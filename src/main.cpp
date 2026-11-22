@@ -139,7 +139,7 @@ private:
         connect(newProject,&QAction::triggered,this,[this]{ clips.clear(); timeline->clear(); projectPath.clear(); player->stop(); statusBar()->showMessage("New project");});
         connect(openProject,&QAction::triggered,this,&StudioCutWindow::openProject);
         connect(saveProject,&QAction::triggered,this,&StudioCutWindow::saveProject);
-        connect(saveAs,&QAction::triggered,this,[this]{ projectPath.clear(); saveProject();});
+        connect(saveAs,&QAction::triggered,this,[this]{ projectPath.clear(); this->saveProject();});
         connect(quit,&QAction::triggered,this,&QWidget::close);
 
         auto *root = new QWidget; auto *outer = new QVBoxLayout(root); outer->setContentsMargins(8,8,8,8); outer->setSpacing(8);
