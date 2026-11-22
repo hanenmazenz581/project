@@ -7,7 +7,9 @@ StudioCut Pro is an original Windows video editor project. It is not Filmora and
 - Media-bin import for video, audio, and image files.
 - Preview playback through Qt Multimedia.
 - Separate sequential Video Track 1, Video Track 2 (overlay), and Audio Track 1 lanes.
-- Video, overlay, and audio clip reordering/removal, split-at-playhead, and per-clip in/out trimming.
+- Video, overlay, and audio clip reordering/removal, split-at-playhead, and per-clip source in/out trimming.
+- Independent timeline start time per clip, including overlaps and gaps; new clips are placed after the current track end by default.
+- FFmpeg rendering composites overlapping clips at their timeline positions and mixes delayed audio clips.
 - FFmpeg export composites Video Track 2 over Video Track 1; transparent PNG overlays retain alpha.
 - Project save/open as JSON, including audio-track clips.
 - FFmpeg export with selectable HD/Full HD/QHD/4K, 24/25/30/50/60 fps, H.264/H.265, and quality presets.
@@ -15,7 +17,7 @@ StudioCut Pro is an original Windows video editor project. It is not Filmora and
 - Build workflow for Windows x64.
 
 ## Not implemented yet
-Independent clip start positions, overlap editing, additional stacked tracks, transitions, keyframes, GPU effects, mixing source-video audio with external tracks, title animation, AI models, proxy media, and full Filmora-level parity are not claimed as complete. V1 and V2 are sequential lanes; V2 is composited over V1 from the beginning of the sequence.
+Additional stacked tracks, drag-to-move timeline interaction, transitions, keyframes, GPU effects, mixing source-video audio with external tracks, title animation, AI models, proxy media, and full Filmora-level parity are not claimed as complete. Clip timing is currently edited numerically in the Inspector; V1 and V2 are composited in track order.
 
 ## Build locally
 Install Qt 6 (Widgets, Multimedia, MultimediaWidgets) and FFmpeg, then:
@@ -26,7 +28,7 @@ cmake --build build --config Release
 Set `FFMPEG_EXECUTABLE` in CMake or put `ffmpeg.exe` on PATH.
 
 ## Export limitation
-The current renderer concatenates clips on Video Track 1, concatenates Video Track 2 as an overlay layer, and independently concatenates clips on Audio Track 1, then muxes the result. It does not yet support clip overlap, precise independent placement, source-video audio mixing, transitions, or layered video compositing.
+The current renderer places each clip at its saved timeline start, composites Video Track 1 and Video Track 2 in order, and mixes Audio Track 1 clips at their saved offsets. FFprobe is bundled to determine source durations. It does not yet support clip overlap, precise independent placement, source-video audio mixing, transitions, or layered video compositing.
 
 
 ## CI
