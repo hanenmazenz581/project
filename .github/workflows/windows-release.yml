@@ -34,6 +34,49 @@ jobs:
           if (-not (Test-Path 'source\main.py')) { throw 'Source archive is incomplete.' }
           if (-not (Test-Path 'source\assets\library_catalog.json')) { throw 'Effect catalog is missing.' }
 
+      - name: Patch Python 3.11 syntax compatibility
+        shell: pwsh
+        run: |
+          $path = 'source\main.py'
+          $code = Get-Content -Raw $path
+          $replacement = @'
+                    escaped_subtitle = subtitle.replace(':', '\\:')
+                    cmd += ['-vf', "subtitles='" + escaped_subtitle + "'"]
+          '@
+          $code = [regex]::Replace($code, '(?m)^\s*cmd \+= \[''-vf'', f"subtitles=.*
+        with:
+          python-version: '3.11'
+          architecture: 'x64'
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build application and installer
+        shell: cmd
+        working-directory: source
+        env:
+          CI: 'true'
+        run: build_windows.bat
+
+      - name: Verify installer exists
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem 'source\release' -Filter 'StudioCutPro-Setup-*.exe' -File | Select-Object -First 1
+          if (-not $installer) { throw 'Installer EXE was not produced.' }
+          Get-Item $installer.FullName | Format-List FullName,Length
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: StudioCutPro-Windows-Installer
+          path: source/release/StudioCutPro-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 14
+, $replacement.TrimEnd())
+          Set-Content -Path $path -Value $code -Encoding utf8
+          if ($code -match 'f"subtitles=.*replace') { throw 'Python 3.11 syntax patch did not apply.' }
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
