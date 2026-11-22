@@ -59,6 +59,23 @@ jobs:
           $script = $script.Replace(' -version | Select-Object -First 2', ' -version')
           Set-Content -Path $path -Value $script -Encoding utf8
 
+      - name: Support PyInstaller 6 internal runtime layout
+        shell: pwsh
+        run: |
+          $mainPath = 'source\main.py'
+          $main = Get-Content -Raw $mainPath
+          $needle = "candidates.append(Path(sys.executable).parent / 'ffmpeg' / filename)"
+          $replacement = $needle + "`n        candidates.append(Path(sys.executable).parent / '_internal' / 'ffmpeg' / filename)"
+          if (-not $main.Contains($needle)) { throw 'FFmpeg runtime lookup anchor was not found.' }
+          $main = $main.Replace($needle, $replacement)
+          Set-Content -Path $mainPath -Value $main -Encoding utf8
+
+          $batchPath = 'source\build_windows.bat'
+          $batch = Get-Content -Raw $batchPath
+          $batch = $batch.Replace('if not exist "dist\StudioCutPro\ffmpeg\ffmpeg.exe" goto failed', 'if not exist "dist\StudioCutPro\ffmpeg\ffmpeg.exe" if not exist "dist\StudioCutPro\_internal\ffmpeg\ffmpeg.exe" goto failed')
+          $batch = $batch.Replace('if not exist "dist\StudioCutPro\ffmpeg\ffprobe.exe" goto failed', 'if not exist "dist\StudioCutPro\ffmpeg\ffprobe.exe" if not exist "dist\StudioCutPro\_internal\ffmpeg\ffprobe.exe" goto failed')
+          Set-Content -Path $batchPath -Value $batch -Encoding ascii
+
       - name: Build application and installer
         shell: cmd
         working-directory: source
