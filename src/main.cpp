@@ -1,4 +1,5 @@
 #include <QApplication>
+#include <QVector>
 #include <QMainWindow>
 #include <QWidget>
 #include <QSplitter>
