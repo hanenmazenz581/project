@@ -377,9 +377,27 @@ private:
             v+=QString(",setpts=PTS-STARTPTS,scale=%1:%2:force_original_aspect_ratio=decrease,pad=%1:%2:(ow-iw)/2:(oh-ih)/2,fps=%3,format=yuv420p[v%4]").arg(width, height, fps).arg(i);
             filters<<v;videoInputs<<QString("[v%1]").arg(i);
         }
-        filters<<videoInputs.join("")+QString("concat=n=%1:v=1:a=0[outv]").arg(clips.size());
+        filters<<videoInputs.join("")+QString("concat=n=%1:v=1:a=0[vbase]").arg(clips.size());
+        for(int i=0;i<overlayClips.size();++i){
+            const auto &c=overlayClips[i];const int inputIndex=videoCount+i;const QString ext=QFileInfo(c.path).suffix().toLower();
+            const bool stillImage=QStringList{"png","jpg","jpeg","bmp","webp"}.contains(ext);
+            if(stillImage)args<<"-loop"<<"1"<<"-t"<<"5";
+            args<<"-i"<<c.path;
+            double duration=c.outPoint<0?(stillImage?5.0:-1.0):c.outPoint-c.inPoint;
+            QString v=QString("[%1:v]trim=start=%2").arg(inputIndex).arg(c.inPoint,0,'f',3);
+            if(duration>0)v+=QString(":duration=%1").arg(duration,0,'f',3);
+            v+=QString(",setpts=PTS-STARTPTS,scale=%1:%2:force_original_aspect_ratio=decrease,pad=%1:%2:(ow-iw)/2:(oh-ih)/2,fps=%3,format=yuva420p[ov%4]").arg(width,height,fps).arg(i);
+            filters<<v;videoInputs<<QString("[ov%1]").arg(i);
+        }
+        if(!overlayClips.isEmpty()){
+            QStringList overlayInputs;for(int i=0;i<overlayClips.size();++i)overlayInputs<<QString("[ov%1]").arg(i);
+            filters<<overlayInputs.join("")+QString("concat=n=%1:v=1:a=0[vtop]").arg(overlayClips.size());
+            filters<<"[vbase][vtop]overlay=eof_action=pass:shortest=0,format=yuv420p[outv]";
+        } else {
+            filters<<"[vbase]null[outv]";
+        }
         for(int i=0;i<audioClips.size();++i){
-            const auto &c=audioClips[i];const int inputIndex=videoCount+i;args<<"-i"<<c.path;
+            const auto &c=audioClips[i];const int inputIndex=videoCount+overlayClips.size()+i;args<<"-i"<<c.path;
             QString a=QString("[%1:a]atrim=start=%2").arg(inputIndex).arg(c.inPoint,0,'f',3);
             if(c.outPoint>c.inPoint)a+=QString(":duration=%1").arg(c.outPoint-c.inPoint,0,'f',3);
             a+=",asetpts=PTS-STARTPTS[a%1]";a=a.arg(i);filters<<a;audioInputs<<QString("[a%1]").arg(i);
