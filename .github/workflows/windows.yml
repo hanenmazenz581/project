@@ -30,8 +30,11 @@ jobs:
         shell: pwsh
         run: |
           windeployqt --release build/Release/StudioCutPro.exe
-          Copy-Item (Get-Command ffmpeg).Source build/Release/ffmpeg.exe
-          Copy-Item (Get-Command ffprobe).Source build/Release/ffprobe.exe
+          $ffmpegExe = Get-ChildItem "C:\ProgramData\chocolatey\lib\ffmpeg\tools" -Filter ffmpeg.exe -Recurse | Select-Object -First 1 -ExpandProperty FullName
+          $ffprobeExe = Get-ChildItem "C:\ProgramData\chocolatey\lib\ffmpeg\tools" -Filter ffprobe.exe -Recurse | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $ffmpegExe -or -not $ffprobeExe) { throw "FFmpeg binaries were not found in the Chocolatey package directory." }
+          Copy-Item $ffmpegExe build/Release/ffmpeg.exe
+          Copy-Item $ffprobeExe build/Release/ffprobe.exe
       - name: Package
         shell: pwsh
         run: |
