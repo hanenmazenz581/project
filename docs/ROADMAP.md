@@ -8,13 +8,15 @@
 - [x] Project JSON save/open
 - [x] Separate sequential Video Track 1, Video Track 2 overlay, and Audio Track 1 lanes
 - [x] FFmpeg Video Track 2 overlay compositing over Video Track 1
+- [x] Independent clip timeline start positions and overlap rendering
+- [x] Delayed audio clip placement and mixing
 - [x] Audio clip trim, split, reorder, remove, and project persistence
 - [x] FFmpeg export presets for resolution, frame rate, H.264/H.265 and quality
 - [x] Sequential audio assembly and AAC muxing
 - [ ] Verify Windows CI build and run on a real Windows desktop
 
 ## Milestone 0.6 — real timeline engine
-- Additional stacked video/audio/title tracks with independent clip start positions and overlap
+- Drag-to-move timeline interaction and additional stacked video/audio/title tracks
 - Frame-accurate timebase and snapping
 - Undo/redo command stack
 - Persistent media metadata and thumbnails/waveforms
