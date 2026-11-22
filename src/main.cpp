@@ -37,6 +37,9 @@
 #include <QAction>
 #include <QUrl>
 #include <QRegularExpression>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QMimeData>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -57,6 +60,7 @@ public:
         setWindowTitle("StudioCut Pro");
         resize(1500, 900);
         setMinimumSize(1100, 700);
+        setAcceptDrops(true);
         buildUi();
         applyTheme();
         statusBar()->showMessage("Ready — import media to begin");
@@ -71,6 +75,34 @@ public:
         connect(player, &QMediaPlayer::mediaStatusChanged, this, [this](QMediaPlayer::MediaStatus s) {
             if (s == QMediaPlayer::InvalidMedia) statusBar()->showMessage("Preview could not open this media. Check codec support.");
         });
+    }
+
+protected:
+    void dragEnterEvent(QDragEnterEvent *event) override {
+        if (event->mimeData()->hasUrls()) event->acceptProposedAction();
+        else event->ignore();
+    }
+    void dropEvent(QDropEvent *event) override {
+        if (!mediaBin || !event->mimeData()->hasUrls()) { event->ignore(); return; }
+        int added = 0;
+        for (const QUrl &url : event->mimeData()->urls()) {
+            if (!url.isLocalFile()) continue;
+            const QString path = url.toLocalFile();
+            const QString ext = QFileInfo(path).suffix().toLower();
+            static const QStringList supported = {"mp4","mov","mkv","avi","webm","mp3","wav","aac","m4a","png","jpg","jpeg","bmp","webp"};
+            if (!supported.contains(ext)) continue;
+            bool exists = false;
+            for (int i=0; i<mediaBin->count(); ++i)
+                if (mediaBin->item(i)->data(Qt::UserRole).toString() == path) { exists=true; break; }
+            if (exists) continue;
+            auto *item = new QListWidgetItem(QFileInfo(path).fileName());
+            item->setToolTip(path);
+            item->setData(Qt::UserRole,path);
+            mediaBin->addItem(item);
+            ++added;
+        }
+        statusBar()->showMessage(QString("Added %1 media file(s) by drag and drop").arg(added));
+        event->acceptProposedAction();
     }
 
 private:
