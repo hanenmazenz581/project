@@ -31,6 +31,7 @@ jobs:
         run: |
           windeployqt --release build/Release/StudioCutPro.exe
           Copy-Item (Get-Command ffmpeg).Source build/Release/ffmpeg.exe
+          Copy-Item (Get-Command ffprobe).Source build/Release/ffprobe.exe
       - name: Package
         shell: pwsh
         run: |
