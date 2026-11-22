@@ -428,24 +428,13 @@ private:
                 .arg(audioInputStart+i).arg(c.inPoint,0,'f',3).arg(audioDurations[i],0,'f',3).arg(qRound64(delayMs)).arg(label);
             filters<<filter;audioLabels<<"["+label+"]";
         }
-        args<<"-filter_complex"<<filters.join(";");
-        args<<"-map"<<"[outv]";
         if(!audioLabels.isEmpty()){
-            filters.clear();
-            QStringList mixFilters;
-            for(int i=0;i<audioClips.size();++i){
-                const auto &c=audioClips[i];const double delayMs=c.timelineStart*1000.0;
-                const QString label="aud"+QString::number(i);
-                mixFilters<<QString("[%1:a]atrim=start=%2:duration=%3,asetpts=PTS-STARTPTS,adelay=%4|%4[%5]")
-                    .arg(audioInputStart+i).arg(c.inPoint,0,'f',3).arg(audioDurations[i],0,'f',3).arg(qRound64(delayMs)).arg(label);
-            }
-            mixFilters<<audioLabels.join("")+QString("amix=inputs=%1:duration=longest:dropout_transition=0,atrim=duration=%2[aout]")
+            filters<<audioLabels.join("")+QString("amix=inputs=%1:duration=longest:dropout_transition=0,atrim=duration=%2[aout]")
                 .arg(audioLabels.size()).arg(totalDuration,0,'f',3);
-            args.removeLast();
-            args<<"-filter_complex"<<mixFilters.join(";")<<"-map"<<"[outv]"<<"-map"<<"[aout]"<<"-c:a"<<"aac"<<"-b:a"<<"192k";
-        } else {
-            args<<"-an";
         }
+        args<<"-filter_complex"<<filters.join(";")<<"-map"<<"[outv]";
+        if(!audioLabels.isEmpty())args<<"-map"<<"[aout]"<<"-c:a"<<"aac"<<"-b:a"<<"192k";
+        else args<<"-an";
         args<<"-t"<<canvasDuration<<"-c:v"<<encoder<<"-preset"<<"medium"<<"-crf"<<crf<<"-movflags"<<"+faststart"<<out;
         auto *proc=new QProcess(this);proc->setProgram(ffmpeg);proc->setArguments(args);
         statusBar()->showMessage("Exporting video with FFmpeg…");exportVideoButtonEnabled(false);
