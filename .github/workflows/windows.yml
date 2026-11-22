@@ -26,7 +26,7 @@ jobs:
       - name: Deploy Qt runtime
         shell: pwsh
         run: |
-          windeployqt --release --multimediawidgets build/Release/StudioCutPro.exe
+          windeployqt --release build/Release/StudioCutPro.exe
           Copy-Item (Get-Command ffmpeg).Source build/Release/ffmpeg.exe
       - name: Package
         shell: pwsh
