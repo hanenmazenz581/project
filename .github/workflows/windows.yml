@@ -1,4 +1,7 @@
 name: Build StudioCut Pro (Windows x64)
+concurrency:
+  group: studiocut-windows-${{ github.ref }}
+  cancel-in-progress: true
 on:
   push:
     branches: [main, studiocut-pro-rebuild]
