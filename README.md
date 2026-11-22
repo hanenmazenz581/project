@@ -24,3 +24,7 @@ Set `FFMPEG_EXECUTABLE` in CMake or put `ffmpeg.exe` on PATH.
 
 ## Export limitation
 The first export engine concatenates trimmed clips in sequence and encodes H.264 video. Audio mixing and multi-track compositing are scheduled for later milestones.
+
+
+## CI
+Windows x64 package is built automatically by GitHub Actions on pushes to this branch. The current native preview build is an early developer build, not a feature-complete Filmora replacement.
