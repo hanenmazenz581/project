@@ -37,6 +37,10 @@
 #include <QAction>
 #include <QUrl>
 #include <QRegularExpression>
+#include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFormLayout>
 #include <algorithm>
 
 struct Clip {
@@ -220,6 +224,43 @@ private:
     }
     void exportVideo() {
         if(clips.isEmpty()){QMessageBox::information(this,"Export","Add clips to the timeline first.");return;}
+        QDialog settings(this);
+        settings.setWindowTitle("Export Settings");
+        settings.setMinimumWidth(360);
+        auto *form = new QFormLayout(&settings);
+        auto *resolution = new QComboBox(&settings);
+        resolution->addItem("1280 × 720 (HD)", "1280:720");
+        resolution->addItem("1920 × 1080 (Full HD)", "1920:1080");
+        resolution->addItem("2560 × 1440 (QHD)", "2560:1440");
+        resolution->addItem("3840 × 2160 (4K)", "3840:2160");
+        resolution->setCurrentIndex(1);
+        auto *frameRate = new QComboBox(&settings);
+        frameRate->addItems({"24 fps", "25 fps", "30 fps", "50 fps", "60 fps"});
+        frameRate->setCurrentIndex(2);
+        auto *codec = new QComboBox(&settings);
+        codec->addItem("H.264 — widest compatibility", "libx264");
+        codec->addItem("H.265 / HEVC — smaller files", "libx265");
+        auto *quality = new QComboBox(&settings);
+        quality->addItem("High quality", 18);
+        quality->addItem("Balanced", 23);
+        quality->addItem("Smaller file", 28);
+        quality->setCurrentIndex(1);
+        form->addRow("Resolution", resolution);
+        form->addRow("Frame rate", frameRate);
+        form->addRow("Video codec", codec);
+        form->addRow("Quality", quality);
+        auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &settings);
+        form->addRow(buttons);
+        connect(buttons, &QDialogButtonBox::accepted, &settings, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &settings, &QDialog::reject);
+        if (settings.exec() != QDialog::Accepted) return;
+        const QString dimensions = resolution->currentData().toString();
+        const QStringList sizeParts = dimensions.split(':');
+        const QString width = sizeParts.value(0, "1920");
+        const QString height = sizeParts.value(1, "1080");
+        const QString fps = frameRate->currentText().split(' ').first();
+        const QString encoder = codec->currentData().toString();
+        const QString crf = quality->currentData().toString();
         QString out=QFileDialog::getSaveFileName(this,"Export Video",QDir::homePath()+"/StudioCut-Export.mp4","MP4 Video (*.mp4)");
         if(out.isEmpty())return;
 #ifdef STUDIOCUT_FFMPEG_PATH
@@ -233,11 +274,11 @@ private:
             double duration=c.outPoint<0?-1:c.outPoint-c.inPoint;
             QString v=QString("[%1:v]trim=start=%2").arg(i).arg(c.inPoint,0,'f',3);
             if(duration>0)v+=QString(":duration=%1").arg(duration,0,'f',3);
-            v+=",setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p[v%1]").arg(i);
+            v+=QString(",setpts=PTS-STARTPTS,scale=%1:%2:force_original_aspect_ratio=decrease,pad=%1:%2:(ow-iw)/2:(oh-ih)/2,fps=%3,format=yuv420p[v%4]").arg(width, height, fps).arg(i);
             filters<<v;inputs<<QString("[v%1]").arg(i);
         }
         filters<<inputs.join("")+QString("concat=n=%1:v=1:a=0[outv]").arg(clips.size());
-        args<<"-filter_complex"<<filters.join(";")<<"-map"<<"[outv]"<< "-an" <<"-c:v"<<"libx264"<<"-preset"<<"medium"<<"-crf"<<"18"<<"-movflags"<<"+faststart"<<out;
+        args<<"-filter_complex"<<filters.join(";")<<"-map"<<"[outv]"<< "-an" <<"-c:v"<<encoder<<"-preset"<<"medium"<<"-crf"<<crf<<"-movflags"<<"+faststart"<<out;
         auto *proc=new QProcess(this);proc->setProgram(ffmpeg);proc->setArguments(args);
         statusBar()->showMessage("Exporting video with FFmpeg…");exportVideoButtonEnabled(false);
         connect(proc,&QProcess::readyReadStandardError,this,[this,proc]{QString s=QString::fromLocal8Bit(proc->readAllStandardError());if(!s.isEmpty())statusBar()->showMessage(s.right(180));});
