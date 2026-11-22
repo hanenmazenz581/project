@@ -388,48 +388,65 @@ private:
         QString ffmpeg="ffmpeg";
 #endif
         QStringList args;args<<"-y";
-        QStringList filters;QStringList videoInputs;QStringList audioInputs;
-        const int videoCount=clips.size();
-        for(int i=0;i<clips.size();++i){const auto &c=clips[i];const QString ext=QFileInfo(c.path).suffix().toLower();
-            const bool stillImage=QStringList{"png","jpg","jpeg","bmp","webp"}.contains(ext);
-            if(stillImage)args<<"-loop"<<"1"<<"-t"<<"5";
-            args<<"-i"<<c.path;
-            double duration=c.outPoint<0?(stillImage?5.0:-1.0):c.outPoint-c.inPoint;
-            QString v=QString("[%1:v]trim=start=%2").arg(i).arg(c.inPoint,0,'f',3);
-            if(duration>0)v+=QString(":duration=%1").arg(duration,0,'f',3);
-            v+=QString(",setpts=PTS-STARTPTS,scale=%1:%2:force_original_aspect_ratio=decrease,pad=%1:%2:(ow-iw)/2:(oh-ih)/2,fps=%3,format=yuv420p[v%4]").arg(width, height, fps).arg(i);
-            filters<<v;videoInputs<<QString("[v%1]").arg(i);
-        }
-        filters<<videoInputs.join("")+QString("concat=n=%1:v=1:a=0[vbase]").arg(clips.size());
-        for(int i=0;i<overlayClips.size();++i){
-            const auto &c=overlayClips[i];const int inputIndex=videoCount+i;const QString ext=QFileInfo(c.path).suffix().toLower();
-            const bool stillImage=QStringList{"png","jpg","jpeg","bmp","webp"}.contains(ext);
-            if(stillImage)args<<"-loop"<<"1"<<"-t"<<"5";
-            args<<"-i"<<c.path;
-            double duration=c.outPoint<0?(stillImage?5.0:-1.0):c.outPoint-c.inPoint;
-            QString v=QString("[%1:v]trim=start=%2").arg(inputIndex).arg(c.inPoint,0,'f',3);
-            if(duration>0)v+=QString(":duration=%1").arg(duration,0,'f',3);
-            v+=QString(",setpts=PTS-STARTPTS,scale=%1:%2:force_original_aspect_ratio=decrease,pad=%1:%2:(ow-iw)/2:(oh-ih)/2,fps=%3,format=yuva420p[ov%4]").arg(width,height,fps).arg(i);
-            filters<<v;videoInputs<<QString("[ov%1]").arg(i);
-        }
-        if(!overlayClips.isEmpty()){
-            QStringList overlayInputs;for(int i=0;i<overlayClips.size();++i)overlayInputs<<QString("[ov%1]").arg(i);
-            filters<<overlayInputs.join("")+QString("concat=n=%1:v=1:a=0[vtop]").arg(overlayClips.size());
-            filters<<"[vbase][vtop]overlay=eof_action=pass:shortest=0,format=yuv420p[outv]";
-        } else {
-            filters<<"[vbase]null[outv]";
-        }
+        QStringList filters;
+        QVector<double> baseDurations,overlayDurations,audioDurations;
+        auto clipDuration=[this](const Clip &c){double d=c.outPoint>c.inPoint?c.outPoint-c.inPoint:mediaDurationSeconds(c.path)-c.inPoint;return qMax(0.05,d);};
+        double totalDuration=0.5;
+        auto isStill=[](const QString &path){return QStringList{"png","jpg","jpeg","bmp","webp"}.contains(QFileInfo(path).suffix().toLower());};
+        for(const auto &c:clips){double d=clipDuration(c);baseDurations.push_back(d);totalDuration=qMax(totalDuration,c.timelineStart+d);}
+        for(const auto &c:overlayClips){double d=clipDuration(c);overlayDurations.push_back(d);totalDuration=qMax(totalDuration,c.timelineStart+d);}
+        for(const auto &c:audioClips){double d=clipDuration(c);audioDurations.push_back(d);totalDuration=qMax(totalDuration,c.timelineStart+d);}
+        for(int i=0;i<clips.size();++i){const auto &c=clips[i];if(isStill(c.path))args<<"-loop"<<"1";args<<"-i"<<c.path;}
+        const int overlayInputStart=clips.size();
+        for(int i=0;i<overlayClips.size();++i){const auto &c=overlayClips[i];if(isStill(c.path))args<<"-loop"<<"1";args<<"-i"<<c.path;}
+        const int audioInputStart=clips.size()+overlayClips.size();
+        for(const auto &c:audioClips)args<<"-i"<<c.path;
+
+        const QString canvasDuration=QString::number(totalDuration,'f',3);
+        filters<<"color=c=black:s="+width+"x"+height+":r="+fps+":d="+canvasDuration+"[canvas0]";
+        QString currentCanvas="[canvas0]";
+        int layerIndex=0;
+        auto addVideoLayer=[&](const Clip &c,int inputIndex,double duration,const QString &prefix){
+            const QString tag=prefix+QString::number(layerIndex++);
+            QString v=QString("[%1:v]trim=start=%2:duration=%3,setpts=PTS-STARTPTS,scale=%4:%5:force_original_aspect_ratio=decrease,pad=%4:%5:(ow-iw)/2:(oh-ih)/2:color=black,fps=%6,format=yuva420p[%7]")
+                .arg(inputIndex).arg(c.inPoint,0,'f',3).arg(duration,0,'f',3).arg(width).arg(height).arg(fps).arg(tag);
+            filters<<v;
+            const QString next="[canvas"+QString::number(layerIndex)+"]";
+            const QString enable=QString("between(t\,%1\,%2)").arg(c.timelineStart,0,'f',3).arg(c.timelineStart+duration,0,'f',3);
+            filters<<currentCanvas+"["+tag+"]overlay=x=0:y=0:eof_action=pass:repeatlast=0:enable='"+enable+"'"+next;
+            currentCanvas=next;
+        };
+        for(int i=0;i<clips.size();++i)addVideoLayer(clips[i],i,baseDurations[i],"baseclip");
+        for(int i=0;i<overlayClips.size();++i)addVideoLayer(overlayClips[i],overlayInputStart+i,overlayDurations[i],"overlayclip");
+        filters<<currentCanvas+"format=yuv420p[outv]";
+
+        QStringList audioLabels;
         for(int i=0;i<audioClips.size();++i){
-            const auto &c=audioClips[i];const int inputIndex=videoCount+overlayClips.size()+i;args<<"-i"<<c.path;
-            QString a=QString("[%1:a]atrim=start=%2").arg(inputIndex).arg(c.inPoint,0,'f',3);
-            if(c.outPoint>c.inPoint)a+=QString(":duration=%1").arg(c.outPoint-c.inPoint,0,'f',3);
-            a+=",asetpts=PTS-STARTPTS[a%1]";a=a.arg(i);filters<<a;audioInputs<<QString("[a%1]").arg(i);
+            const auto &c=audioClips[i];const double delayMs=c.timelineStart*1000.0;
+            const QString label="aud"+QString::number(i);
+            const QString filter=QString("[%1:a]atrim=start=%2:duration=%3,asetpts=PTS-STARTPTS,adelay=%4|%4[%5]")
+                .arg(audioInputStart+i).arg(c.inPoint,0,'f',3).arg(audioDurations[i],0,'f',3).arg(qRound64(delayMs)).arg(label);
+            filters<<filter;audioLabels<<"["+label+"]";
         }
-        if(!audioInputs.isEmpty())filters<<audioInputs.join("")+QString("concat=n=%1:v=0:a=1[outa]").arg(audioInputs.size());
-        args<<"-filter_complex"<<filters.join(";")<<"-map"<<"[outv]";
-        if(!audioInputs.isEmpty())args<<"-map"<<"[outa]"<<"-c:a"<<"aac"<<"-b:a"<<"192k";
-        else args<<"-an";
-        args<<"-c:v"<<encoder<<"-preset"<<"medium"<<"-crf"<<crf<<"-movflags"<<"+faststart"<<out;
+        args<<"-filter_complex"<<filters.join(";");
+        args<<"-map"<<"[outv]";
+        if(!audioLabels.isEmpty()){
+            filters.clear();
+            QStringList mixFilters;
+            for(int i=0;i<audioClips.size();++i){
+                const auto &c=audioClips[i];const double delayMs=c.timelineStart*1000.0;
+                const QString label="aud"+QString::number(i);
+                mixFilters<<QString("[%1:a]atrim=start=%2:duration=%3,asetpts=PTS-STARTPTS,adelay=%4|%4[%5]")
+                    .arg(audioInputStart+i).arg(c.inPoint,0,'f',3).arg(audioDurations[i],0,'f',3).arg(qRound64(delayMs)).arg(label);
+            }
+            mixFilters<<audioLabels.join("")+QString("amix=inputs=%1:duration=longest:dropout_transition=0,atrim=duration=%2[aout]")
+                .arg(audioLabels.size()).arg(totalDuration,0,'f',3);
+            args.removeLast();
+            args<<"-filter_complex"<<mixFilters.join(";")<<"-map"<<"[outv]"<<"-map"<<"[aout]"<<"-c:a"<<"aac"<<"-b:a"<<"192k";
+        } else {
+            args<<"-an";
+        }
+        args<<"-t"<<canvasDuration<<"-c:v"<<encoder<<"-preset"<<"medium"<<"-crf"<<crf<<"-movflags"<<"+faststart"<<out;
         auto *proc=new QProcess(this);proc->setProgram(ffmpeg);proc->setArguments(args);
         statusBar()->showMessage("Exporting video with FFmpeg…");exportVideoButtonEnabled(false);
         connect(proc,&QProcess::readyReadStandardError,this,[this,proc]{QString s=QString::fromLocal8Bit(proc->readAllStandardError());if(!s.isEmpty())statusBar()->showMessage(s.right(180));});
