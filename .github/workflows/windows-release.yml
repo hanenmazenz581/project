@@ -16,12 +16,23 @@ jobs:
       - name: Checkout build manifest
         uses: actions/checkout@v4
 
-      - name: Extract source package
+      - name: Reassemble and extract source package
         shell: pwsh
         run: |
-          $bytes = [Convert]::FromBase64String((Get-Content -Raw 'studiocut-source.zip.b64'))
+          $parts = @(
+            'studiocut-source.zip.b64.part00',
+            'studiocut-source.zip.b64.part01',
+            'studiocut-source.zip.b64.part02',
+            'studiocut-source.zip.b64.part03',
+            'studiocut-source.zip.b64.part04',
+            'studiocut-source.zip.b64.part05'
+          )
+          $encoded = ($parts | ForEach-Object { (Get-Content -Raw $_).Trim() }) -join ''
+          $bytes = [Convert]::FromBase64String($encoded)
           [IO.File]::WriteAllBytes('studiocut-source.zip', $bytes)
           Expand-Archive -Path 'studiocut-source.zip' -DestinationPath 'source' -Force
+          if (-not (Test-Path 'source\main.py')) { throw 'Source archive is incomplete.' }
+          if (-not (Test-Path 'source\assets\library_catalog.json')) { throw 'Effect catalog is missing.' }
 
       - name: Set up Python
         uses: actions/setup-python@v5
