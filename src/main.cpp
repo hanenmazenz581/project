@@ -138,7 +138,7 @@ private:
         auto *newProject = file->addAction("New Project"); auto *openProject = file->addAction("Open Project…");
         auto *saveProject = file->addAction("Save Project"); auto *saveAs = file->addAction("Save Project As…");
         file->addSeparator(); auto *quit = file->addAction("Exit");
-        connect(newProject,&QAction::triggered,this,[this]{ clips.clear(); timeline->clear(); projectPath.clear(); player->stop(); statusBar()->showMessage("New project");});
+        connect(newProject,&QAction::triggered,this,[this]{ clips.clear(); audioClips.clear(); overlayClips.clear(); refreshTimeline(); projectPath.clear(); player->stop(); statusBar()->showMessage("New project");});
         connect(openProject,&QAction::triggered,this,&StudioCutWindow::openProject);
         connect(saveProject,&QAction::triggered,this,&StudioCutWindow::saveProject);
         connect(saveAs,&QAction::triggered,this,[this]{ projectPath.clear(); this->saveProject();});
