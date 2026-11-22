@@ -51,6 +51,14 @@ jobs:
           $batch = $batch.Replace('py -3.11', 'py -3.12')
           Set-Content -Path 'source\build_windows.bat' -Value $batch -Encoding ascii
 
+      - name: Fix FFmpeg validation output handling
+        shell: pwsh
+        run: |
+          $path = 'source\tools\fetch_ffmpeg.ps1'
+          $script = Get-Content -Raw $path
+          $script = $script.Replace(' -version | Select-Object -First 2', ' -version')
+          Set-Content -Path $path -Value $script -Encoding utf8
+
       - name: Build application and installer
         shell: cmd
         working-directory: source
