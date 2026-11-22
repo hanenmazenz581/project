@@ -89,7 +89,7 @@ protected:
             if (!url.isLocalFile()) continue;
             const QString path = url.toLocalFile();
             const QString ext = QFileInfo(path).suffix().toLower();
-            static const QStringList supported = {"mp4","mov","mkv","avi","webm","mp3","wav","aac","m4a","png","jpg","jpeg","bmp","webp"};
+            static const QStringList supported = {"mp4","mov","mkv","avi","webm","mp3","wav","aac","m4a","flac","ogg","png","jpg","jpeg","bmp","webp"};
             if (!supported.contains(ext)) continue;
             bool exists = false;
             for (int i=0; i<mediaBin->count(); ++i)
@@ -214,7 +214,7 @@ private:
         )");
     }
     void importMedia() {
-        const auto paths=QFileDialog::getOpenFileNames(this,"Import Media",QString(),"Media Files (*.mp4 *.mov *.mkv *.avi *.webm *.mp3 *.wav *.aac *.m4a *.png *.jpg *.jpeg *.bmp *.webp);;All Files (*)");
+        const auto paths=QFileDialog::getOpenFileNames(this,"Import Media",QString(),"Media Files (*.mp4 *.mov *.mkv *.avi *.webm *.mp3 *.wav *.aac *.m4a *.flac *.ogg *.png *.jpg *.jpeg *.bmp *.webp);;All Files (*)");
         for(const auto &p:paths){ bool exists=false; for(int i=0;i<mediaBin->count();++i)if(mediaBin->item(i)->data(Qt::UserRole).toString()==p)exists=true;
             if(!exists){auto *it=new QListWidgetItem(QFileInfo(p).fileName());it->setToolTip(p);it->setData(Qt::UserRole,p);mediaBin->addItem(it);} }
         statusBar()->showMessage(QString("%1 media item(s) in library").arg(mediaBin->count()));
@@ -337,8 +337,11 @@ private:
         QStringList args;args<<"-y";
         QStringList filters;QStringList videoInputs;QStringList audioInputs;
         const int videoCount=clips.size();
-        for(int i=0;i<clips.size();++i){const auto &c=clips[i];args<<"-i"<<c.path;
-            double duration=c.outPoint<0?-1:c.outPoint-c.inPoint;
+        for(int i=0;i<clips.size();++i){const auto &c=clips[i];const QString ext=QFileInfo(c.path).suffix().toLower();
+            const bool stillImage=QStringList{"png","jpg","jpeg","bmp","webp"}.contains(ext);
+            if(stillImage)args<<"-loop"<<"1"<<"-t"<<"5";
+            args<<"-i"<<c.path;
+            double duration=c.outPoint<0?(stillImage?5.0:-1.0):c.outPoint-c.inPoint;
             QString v=QString("[%1:v]trim=start=%2").arg(i).arg(c.inPoint,0,'f',3);
             if(duration>0)v+=QString(":duration=%1").arg(duration,0,'f',3);
             v+=QString(",setpts=PTS-STARTPTS,scale=%1:%2:force_original_aspect_ratio=decrease,pad=%1:%2:(ow-iw)/2:(oh-ih)/2,fps=%3,format=yuv420p[v%4]").arg(width, height, fps).arg(i);
