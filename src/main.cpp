@@ -390,7 +390,7 @@ private:
         QStringList args;args<<"-y";
         QStringList filters;
         QVector<double> baseDurations,overlayDurations,audioDurations;
-        auto clipDuration=[this](const Clip &c){double d=c.outPoint>c.inPoint?c.outPoint-c.inPoint:mediaDurationSeconds(c.path)-c.inPoint;return qMax(0.05,d);};
+        auto clipDuration=[this](const Clip &c){double d=c.outPoint>c.inPoint?c.outPoint-c.inPoint:mediaDurationSeconds(c.path)-c.inPoint;if(d<=0.05&&player->source().toLocalFile()==c.path)d=qMax(0.0,player->duration()/1000.0-c.inPoint);return qMax(0.05,d>0.05?d:5.0);};
         double totalDuration=0.5;
         auto isStill=[](const QString &path){return QStringList{"png","jpg","jpeg","bmp","webp"}.contains(QFileInfo(path).suffix().toLower());};
         for(const auto &c:clips){double d=clipDuration(c);baseDurations.push_back(d);totalDuration=qMax(totalDuration,c.timelineStart+d);}
@@ -412,7 +412,7 @@ private:
                 .arg(inputIndex).arg(c.inPoint,0,'f',3).arg(duration,0,'f',3).arg(width).arg(height).arg(fps).arg(tag);
             filters<<v;
             const QString next="[canvas"+QString::number(layerIndex)+"]";
-            const QString enable=QString("between(t\,%1\,%2)").arg(c.timelineStart,0,'f',3).arg(c.timelineStart+duration,0,'f',3);
+            const QString enable=QString("between(t,%1,%2)").arg(c.timelineStart,0,'f',3).arg(c.timelineStart+duration,0,'f',3);
             filters<<currentCanvas+"["+tag+"]overlay=x=0:y=0:eof_action=pass:repeatlast=0:enable='"+enable+"'"+next;
             currentCanvas=next;
         };
