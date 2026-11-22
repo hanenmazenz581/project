@@ -6,13 +6,15 @@ StudioCut Pro is an original Windows video editor project. It is not Filmora and
 - Native Qt 6 desktop shell with a dark editing workspace.
 - Media-bin import for video, audio, and image files.
 - Preview playback through Qt Multimedia.
-- Timeline clip assembly, clip reordering/removal, split-at-playhead, and per-clip in/out trimming.
-- Project save/open as JSON.
-- FFmpeg-backed sequential video export (video stream, H.264 MP4).
+- Separate sequential Video Track 1 and Audio Track 1 lanes.
+- Video and audio clip reordering/removal, split-at-playhead, and per-clip in/out trimming.
+- Project save/open as JSON, including audio-track clips.
+- FFmpeg export with selectable HD/Full HD/QHD/4K, 24/25/30/50/60 fps, H.264/H.265, and quality presets.
+- Sequential video assembly and sequential external-audio assembly, muxed into an MP4 with AAC audio.
 - Build workflow for Windows x64.
 
 ## Not implemented yet
-Multi-track compositing, transitions, keyframes, GPU effects, audio mixing, title animation, AI models, proxy media, and full Filmora-level parity are not claimed as complete. They are planned engineering milestones.
+Stacked/overlaid video tracks, clip positioning and overlap, transitions, keyframes, GPU effects, mixing source-video audio with external tracks, title animation, AI models, proxy media, and full Filmora-level parity are not claimed as complete. The current V1/A1 lanes are sequential assembly tracks, not yet a full compositing timeline.
 
 ## Build locally
 Install Qt 6 (Widgets, Multimedia, MultimediaWidgets) and FFmpeg, then:
@@ -23,7 +25,7 @@ cmake --build build --config Release
 Set `FFMPEG_EXECUTABLE` in CMake or put `ffmpeg.exe` on PATH.
 
 ## Export limitation
-The first export engine concatenates trimmed clips in sequence and encodes H.264 video. Audio mixing and multi-track compositing are scheduled for later milestones.
+The current renderer concatenates clips on Video Track 1 and independently concatenates clips on Audio Track 1, then muxes the result. It does not yet support clip overlap, precise independent placement, source-video audio mixing, transitions, or layered video compositing.
 
 
 ## CI
