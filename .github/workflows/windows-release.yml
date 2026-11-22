@@ -76,6 +76,14 @@ jobs:
           $batch = $batch.Replace('if not exist "dist\StudioCutPro\ffmpeg\ffprobe.exe" goto failed', 'if not exist "dist\StudioCutPro\ffmpeg\ffprobe.exe" if not exist "dist\StudioCutPro\_internal\ffmpeg\ffprobe.exe" goto failed')
           Set-Content -Path $batchPath -Value $batch -Encoding ascii
 
+      - name: Fix Inno Setup comment syntax
+        shell: pwsh
+        run: |
+          $path = 'source\installer\StudioCutPro.iss'
+          $iss = Get-Content -Raw $path
+          $iss = $iss -replace '(?m)^# Inno Setup 6 installer script', '; Inno Setup 6 installer script'
+          Set-Content -Path $path -Value $iss -Encoding utf8
+
       - name: Build application and installer
         shell: cmd
         working-directory: source
